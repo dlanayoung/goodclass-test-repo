@@ -1,0 +1,43 @@
+name: Sync GitHub Status to Lark
+
+on:
+  create: # Triggers when a branch is created
+  pull_request:
+    types: [opened, closed] # Triggers when PR is opened or merged/closed
+
+jobs:
+  sync-to-lark:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Determine Status and Branch
+        id: info
+        run: |
+          # 1. Detect the Git branch name
+          if [ "${{ github.event_name }}" = "pull_request" ]; then
+            echo "branch=${{ github.event.pull_request.head.ref }}" >> $GITHUB_OUTPUT
+          else
+            echo "branch=${{ github.event.ref }}" >> $GITHUB_OUTPUT
+          fi
+
+          # 2. Map the event to your Lark status dropdown values
+          if [ "${{ github.event_name }}" = "create" ]; then
+            echo "status=In Progress" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.action }}" = "opened" ]; then
+            echo "status=In Review" >> $GITHUB_OUTPUT
+          elif [ "${{ github.event_name }}" = "pull_request" ] && [ "${{ github.event.pull_request.merged }}" = "true" ]; then
+            echo "status=Done" >> $GITHUB_OUTPUT
+          else
+            echo "status=Ignore" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Send Update to Lark
+        if: steps.info.outputs.status != 'Ignore'
+        run: |
+          # Use curl to securely request an access token from Lark
+          TOKEN=$(curl -s -X POST "https://open.larksuite.com/open-apis/auth/v3/tenant_access_token/internal" \
+            -H "Content-Type: application/json" \
+            -d '{"app_id":"${{ secrets.LARK_APP_ID }}","app_secret":"${{ secrets.LARK_APP_SECRET }}"}' | jq -r '.tenant_access_token')
+
+          # Search for the row matching the branch name and update its Status field
+          # (Replace below with the official Lark Base Record Update API endpoint)
+          echo "Updating Lark row for branch ${{ steps.info.outputs.branch }} to status: ${{ steps.info.outputs.status }}"
